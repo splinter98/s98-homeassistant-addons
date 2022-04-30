@@ -1,0 +1,34 @@
+name: "Step CA Client"
+description: "Privision and renew private SSL certificate with Step CA"
+version: "1.0.0"
+slug: "step"
+# webui: http://[HOST]:[PORT:7400]
+boot: auto
+arch:
+  - aarch64
+  - amd64
+  - armv7
+  - i386
+map:
+  - ssl:rw
+  - config
+options:
+  cert_lifespan: null
+  debug: false
+  tls_domains: null
+  ca_url: null
+  ca_fingerprint: null
+  ca_provisioner: null
+  ca_token: null
+  tls_cert_location: /ssl/mtls.crt
+  tls_key_location: /ssl/mtls.key
+schema:
+  cert_lifespan: "str?"
+  debug: bool
+  tls_domains: [str]
+  ca_url: url
+  ca_fingerprint: str
+  ca_provisioner: "str?"
+  ca_token: "password?"
+  tls_cert_location: str
+  tls_key_location: str

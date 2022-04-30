@@ -1,0 +1,108 @@
+#!/usr/bin/with-contenv bashio
+# shellcheck shell=bash
+# ==============================================================================
+# Start the example service
+# s6-overlay docs: https://github.com/just-containers/s6-overlay
+# ==============================================================================
+set -e
+
+export STEPPATH=/data/.step
+CA_URL="$(bashio::config ca_url)"
+CA_FINGERPRINT="$(bashio::config ca_fingerprint)"
+TLS_CERT_LOCATION="$(bashio::config tls_cert_location)"
+TLS_KEY_LOCATION="$(bashio::config tls_key_location)"
+TLS_PEM_LOCATION="$(bashio::config tls_pem_location)"
+
+if bashio::config.true debug; then
+    export STEPDEBUG=1
+fi
+STEP_NOT_AFTER="$(bashio::config cert_lifespan)"
+export STEP_NOT_AFTER
+
+function bootstrap() {
+    echo "Step CA not configured - Setting up"
+    step ca bootstrap --ca-url "${CA_URL}" --fingerprint "${CA_FINGERPRINT}" --install
+}
+
+function generate_tls_sans() {
+    count=0
+    declare -n __tls_sans=$1
+    declare -n __tls_subject=$2
+    local TLS_DOMAINS
+    TLS_DOMAINS="$(bashio::config tls_domains)"
+    for i in ${TLS_DOMAINS//,/ }; do
+        if [ "$count" = "0" ]; then
+            __tls_subject=$i
+        fi
+        __tls_sans=("${tls_sans[@]}" --san "$i")
+        ((count++)) || true
+    done
+    if [ "$count" = "0" ]; then
+        echo >&2 "You must supply at least one value to \$TLS_DOMAINS"
+        exit 1
+    fi
+    if [ "$count" = "1" ]; then
+        __tls_sans=()
+    fi
+    echo "${tls_sans[@]}"
+}
+
+function verify_certificate() {
+    if [ ! -f "${TLS_CERT_LOCATION}" ] || [ ! -f "${TLS_KEY_LOCATION}" ]; then
+        return 1
+    fi
+    step certificate verify "${TLS_CERT_LOCATION}" --roots $STEPPATH/certs/root_ca.crt
+}
+
+function enroll_certificate() {
+    if verify_certificate; then
+        echo "Current certificate valid - no provisioning required"
+        return 0
+    fi
+    echo "No certificate exists or expired - Requesting a new one"
+    rm -f "$TLS_CERT_LOCATION" "$TLS_KEY_LOCATION"
+    local CA_TOKEN
+    local CA_PROVISIONER_NAME
+    declare -a tls_sans
+    local tls_subject
+    generate_tls_sans tls_sans tls_subject
+    CA_TOKEN="$(bashio::config ca_token)"
+    CA_PROVISIONER_NAME="$(bashio::config ca_provisioner)"
+    declare -a flags
+    if [ -z "$CA_TOKEN" ]; then
+        # Discover an ACME provisioner
+        if [ -z "$CA_PROVISIONER_NAME" ]; then
+            provisioner=$(step ca provisioner list | jq -r '[.[] | select(.type == "ACME") | .name][0]')
+            if [ "$provisioner" != "null" ]; then
+                CA_PROVISIONER_NAME=$provisioner
+            else
+                echo >&2 "No CA_PROVISIONER_NAME provided and no ACME provisioners found; certificate management is disabled."
+                exit 1
+            fi
+        fi
+        echo >&2 "Using CA provisioner: ${CA_PROVISIONER_NAME}."
+        flags=("${flags[@]}" --provisioner "${CA_PROVISIONER_NAME}")
+    else
+        flags=("${flags[@]}" --token "${CA_TOKEN}")
+    fi
+    flags=("${flags[@]}" "${tls_sans[@]}")
+    step ca certificate "$tls_subject" "$TLS_CERT_LOCATION" "$TLS_KEY_LOCATION" "${flags[@]}" &&
+        post_enroll_certificate
+}
+
+function post_enroll_certificate() {
+    echo "Post Enrolling new certificate"
+    cat "$TLS_CERT_LOCATION" "$TLS_KEY_LOCATION" >"$TLS_PEM_LOCATION"
+    return 0
+}
+
+if [[ ! -d ${STEPPATH} ]]; then
+    bootstrap
+fi
+
+if enroll_certificate; then
+    echo "Starting Step CA Rewnewal Deamon"
+    step ca renew --daemon --exec "/usr/local/bin/cert-post-renew-hook.sh" "$TLS_CERT_LOCATION" "$TLS_KEY_LOCATION"
+fi
+
+echo "Step Certificate Finished"
