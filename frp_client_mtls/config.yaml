@@ -1,0 +1,65 @@
+name: "FRPC Client with mTLS"
+description: "FRPC client with mTLS support with step CA"
+version: "1.0.0"
+slug: "frpc"
+# webui: http://[HOST]:[PORT:7400]/
+boot: auto
+arch:
+  - aarch64
+  - amd64
+  - armv7
+  - i386
+map:
+  - ssl:rw
+  - config
+ingress: true
+ingress_stream: true
+ingress_entry: ""
+ports:
+  "7400/tcp": null
+ports_descrption:
+  "7400/tcp": "Web interface (Not required for ingress)"
+options:
+  step:
+    cert_lifespan: ""
+    debug: false
+    tls_domains: null
+    ca_url: null
+    ca_fingerprint: null
+    ca_provisioner: ""
+    ca_token: null
+    tls_cert_location: /data/mtls.crt
+    tls_key_location: /data/mtls.key
+  frpc:
+    token: "12345678"
+    server_addr: null
+    server_port: 7000
+    log_level: warn
+    user: homeassistant
+    login_fail_exit: true
+    protocol: tcp
+    subdomain: hass
+    admin_user: admin
+    admin_password: admin
+schema:
+  step:
+    cert_lifespan: "str?"
+    debug: bool
+    tls_domains: [str]
+    ca_url: url
+    ca_fingerprint: str
+    ca_provisioner: "str?"
+    ca_token: "password?"
+    tls_cert_location: str
+    tls_key_location: str
+  frpc:
+    token: password
+    server_addr: str
+    server_port: port
+    log_level: list(trace|debug|info|warn|error)
+    user: str
+    login_fail_exit: bool
+    protocol: list(tcp|kcp|websocket)
+    subdomain: str
+    admin_user: str
+    admin_password: password

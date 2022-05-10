@@ -1,0 +1,9 @@
+#!/usr/bin/env bashio
+# shellcheck shell=bash
+
+# Wait for Node-RED to become available
+bashio::net.wait_for 7400 localhost 300
+
+bashio::log.info "Starting NGinx..."
+
+exec nginx
